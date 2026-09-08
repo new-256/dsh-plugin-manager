@@ -79,6 +79,8 @@ dsh plugin --profile web add dsh-plugin-manager-plus
 >       name: dsh-plugin-manager-plus
 > ```
 
+**bundle 形态插件（自带 `dsh.bundle.patch` 的包）**：v1.3.1 起自动识别——安装时**不再**写入家级插入行（bundle 层已由官方 CLI 自动挂载，再写一条会触发同包双 Loader 源致命错误），只记录到 manifest 供 UI 管理。此类插件在「插件管理」中显示为社区来源、可启停/卸载，其激活行随包安装/卸载自动存在/消失。
+
 ### 方式二：git clone + 接线脚本（本地开发）
 
 ```powershell
