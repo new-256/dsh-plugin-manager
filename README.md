@@ -1,10 +1,24 @@
-# dsh-plugin-manager · DSH 插件管理器
+# dsh-plugin-manager-plus · DSH 插件管理器
 
 [English](#english) | 中文
 
 DeepSeek Harness (DSH) Desktop 宿主插件：把「插件市场」与「插件管理」装进 Web GUI 的 **设置 → 插件** 面板 —— 搜索并一键安装 npm 社区插件，启停/卸载已安装插件（含你自研的），所有变更持久化、热生效。
 
 零 npm 依赖 · 纯 Node 内置模块 + 原生 React · 中文/英文双语界面
+
+## 📐 适配版本
+
+| 项 | 值 |
+|---|---|
+| DSH CLI（`@deepseek-ai/dsh`） | `>=0.1.1-rc.2`（声明于 `peerDependencies` 与 `dsh.compatibility`） |
+| 实测通过 | `0.1.1-rc.2`、`0.1.2-alpha.5`、`0.1.3-alpha.2` |
+| DSH Desktop | `>=0.3.15`（实测 0.3.15） |
+| Node | `>=20`（`engines`） |
+
+- **标准分发形态（npm）**：patch 层只需**一条裸包名行** —— 包 `main`（`lib/index.mjs`）加载宿主半，`dsh.client` 声明让 client-modules 自动把 `lib/client.js` 纳入浏览器花名册（combo URL 分发）；再写一条裸包名 client 行反而会触发「同包双 Loader 源」组合错误（DSH 0.1.2-alpha.x 起）。
+- **DSH 0.1.1-rc.x（旧版）**：除 host 行外还需第二条裸包名 client 行（旧版靠 `require.resolve` 扫描花名册）。
+- 安装后包内 `cordis.patch.yml`（`dsh.bundle.patch`）自动挂载为 profile 的 bundle 层。
+- `GET /plugin-manager/api/version` 同时上报插件版本、宿主 DSH 版本与兼容性声明，便于核对。
 
 ---
 
@@ -40,13 +54,32 @@ DeepSeek Harness (DSH) Desktop 宿主插件：把「插件市场」与「插件�
 - **Loopback 校验**：仅 127.0.0.1 / ::1 可访问 API
 - **Host 端口比对** + **CSRF 防护**（Sec-Fetch-Site / Origin）
 - 补丁文件编辑 **fail-safe**：块级文本操作保留全部注释与格式，解析失败绝不落盘；每次写入前滚动备份 `cordis.patch.yml.bak-pm`
+- 补丁写入带 **mtime 乐观锁**：与其他会话/手工编辑并发冲突时自动重读重试（3 次），多次冲突才报错，不覆盖他人修改
 - 安装/卸载任务**串行队列**，带超时与进程清理
+- UI 层防自锁：停用插件管理器自身前强警告（停用后需手改补丁文件恢复）
 
 ---
 
 ## 📦 安装
 
-### 方式一：git clone + 接线脚本（推荐）
+### 方式一：npm 标准安装（推荐）
+
+插件已发布到 npm，用 DSH 官方插件命令直接安装（转发 pnpm，跨设备可重复）：
+
+```powershell
+dsh plugin --profile web add dsh-plugin-manager-plus
+```
+
+安装后包内 `cordis.patch.yml`（`dsh.bundle.patch`）自动作为 profile 的 bundle 层挂载通用默认行（host 半裸包名解析，client 半自动进浏览器花名册），刷新浏览器即可在「设置 → 插件」看到两个新标签页。**无需任何手动接线**。
+
+> 需要手动写家级补丁行时（如为了用户层覆写/持久化），追加：
+> ```yaml
+> - insert:
+>     - id: plugin-manager
+>       name: dsh-plugin-manager-plus
+> ```
+
+### 方式二：git clone + 接线脚本（本地开发）
 
 ```powershell
 git clone https://github.com/new-256/dsh-plugin-manager.git
@@ -54,11 +87,11 @@ cd dsh-plugin-manager
 pwsh -File install.ps1
 ```
 
-脚本会：① 建立三处 junction（`$DSH_HOME/node_modules`、`$DSH_HOME/profiles/node_modules`、`$DSH_HOME/profiles/web/node_modules`）；② 打印需要追加到家级补丁层 `$DSH_HOME\cordis.patch.yml` 的行（含按本机路径生成的 `file://` URL）。
+脚本会：① 建立三处 junction（`$DSH_HOME/node_modules`、`$DSH_HOME/profiles/node_modules`、`$DSH_HOME/profiles/web/node_modules`）；② 检查/提示家级补丁层 `$DSH_HOME\cordis.patch.yml` 的裸包名行。
 
-### 方式二：从其他插件市场安装
+### 方式三：从其他插件市场安装
 
-在 DSH 的任意插件市场里搜索 `dsh-plugin-manager` 安装。
+在 DSH 的任意插件市场里搜索 `dsh-plugin-manager-plus` 安装（npmmirror 已同步）。
 
 ### 生效
 
@@ -71,26 +104,26 @@ pwsh -File install.ps1
 
 ```
 dsh-plugin-manager/
-├── package.json          # dsh.client 声明 + exports（浏览器花名册入口）
+├── package.json          # dsh.client 声明（花名册入口）+ dsh.bundle.patch + exports
+├── cordis.patch.yml      # bundle 补丁层（安装后自动挂载通用默认行）
 ├── lib/
-│   ├── index.mjs         # 宿主半：API 路由、分类引擎、补丁编辑器、任务队列
-│   ├── client.js         # 浏览器半：插件管理/插件市场两个 settings.plugins.tab
-│   └── client-entry.mjs  # 空操作占位（防止双行名加载两份实例）
-├── install.ps1           # 幂等接线脚本（junction 三处 + 补丁行检查）
+│   ├── index.mjs         # 宿主半：API 路由、分类引擎、补丁编辑器、任务队列（package main）
+│   └── client.js         # 浏览器半：插件管理/插件市场两个 settings.plugins.tab
+├── install.ps1           # 本地开发接线脚本（junction 三处 + 补丁行检查）
 └── README.md
 ```
 
 **宿主半 API**（`/plugin-manager/api/*`，前缀路由挂载于 webServer）：
-`version` · `status` · `inventory`（含 category/funcCategory/enabled）· `search` · `install` · `toggle` · `uninstall`
+`version`（含插件版本/宿主 DSH 版本/兼容性声明）· `status` · `inventory`（含 category/funcCategory/enabled）· `search` · `install` · `toggle` · `uninstall`
 
-**接线原理**：家级补丁层（`$DSH_HOME/cordis.patch.yml`）是 dsh 原生的、对所有 profile 生效的最高用户层——两条行：host 行用 `file://` URL 指向 `lib/index.mjs?v=N`，client 行用裸包名（宿主 client-modules 扫描 `package.json` 的 `dsh.client` 声明把 `lib/client.js` 纳入浏览器花名册，经 `/plugins/dsh-plugin-manager/client.js` 分发）。
+**接线原理（标准形态）**：patch 层只需**一条裸包名行** `name: dsh-plugin-manager-plus` —— loader 按包 `main`（`lib/index.mjs`）加载宿主半；client 半靠 `package.json` 的 `dsh.client` 声明被宿主 client-modules 自动纳入浏览器花名册（combo URL 分发），无需单独一行。包内 `cordis.patch.yml` 经 `dsh.bundle.patch` 在安装后自动挂载为 profile 的 bundle 层。
 
 ---
 
 ## 🔧 开发与热更新
 
 - 改 `lib/client.js` → **刷新浏览器**即生效（client bundle rev 自动变化）
-- 改 `lib/index.mjs` → 把补丁行里的 `?v=N` **bump 一次**（绕过 ESM 模块缓存），或重启 DSH Desktop
+- 改 `lib/index.mjs` → **重启 DSH Desktop** 生效；或临时把补丁行 `name` 改成 `dsh-plugin-manager-plus?v=N` 触发热重载（N 递增），验证后改回
 - profiles 目录被 DSH Desktop 隔离重建后 junction 会丢 → 重跑 `install.ps1`
 - 用途分类规则在 `lib/index.mjs` 顶部的 `FUNC_RULES`（官方包前缀表）与 `COMMUNITY_FUNC_RULES`（社区包关键词表），可自行增删
 
@@ -106,9 +139,11 @@ A DeepSeek Harness (DSH) Desktop host plugin that puts a **Plugin Marketplace** 
 
 - **Market tab**: live npm search (npmmirror + npmjs fallback), one-click install via the official `dsh plugin add` path, auto-registered into the home-level patch layer, hot-reloaded without backend restart.
 - **Manager tab**: three filter dimensions (source: community/core/user · function: coding/chat/models/UI/network/infra/other · status: enabled/disabled) + search; per-plugin mount state, hot enable/disable, and categorized uninstall (npm package / junction / local file; core rows are protected).
-- **Security**: loopback-only API, host-port & CSRF checks, fail-safe comment-preserving patch editor with rolling backup, serialized task queue.
+- **Security**: loopback-only API, host-port & CSRF checks, fail-safe comment-preserving patch editor with rolling backup and mtime optimistic locking (auto re-read/retry on concurrent writers), serialized task queue.
 - Zero npm dependencies; bilingual UI (zh/en).
 
-Install: `git clone` + `pwsh -File install.ps1` (creates the three junctions and prints the patch rows to append to `$DSH_HOME\cordis.patch.yml`), then refresh the browser.
+Compatibility: DSH `>=0.1.1-rc.2` (declared in `peerDependencies` and `dsh.compatibility`; tested on `0.1.1-rc.2`, `0.1.2-alpha.5` and `0.1.3-alpha.2`, DSH Desktop 0.3.15, Node >= 20). Standard npm distribution: **one bare-package patch row** — the loader resolves the package `main` (`lib/index.mjs`) for the host half, and client-modules picks up `lib/client.js` from the `dsh.client` declaration automatically (combo-URL roster); a second bare-package client row is a composition error on DSH `0.1.2-alpha.x+`. The in-package `cordis.patch.yml` is mounted automatically as the profile's bundle layer via `dsh.bundle.patch`.
+
+Install: `dsh plugin --profile web add dsh-plugin-manager-plus` (npm), or `git clone` + `pwsh -File install.ps1` for local development (creates the three junctions and checks the bare-package row in `$DSH_HOME\cordis.patch.yml`), then refresh the browser.
 
 License: MIT

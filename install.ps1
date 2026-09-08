@@ -1,8 +1,14 @@
-# dsh-plugin-manager 接线修复脚本（幂等）
+# dsh-plugin-manager-plus — 标准安装接线脚本（幂等）
 #
-# 用途：重建包解析所需的三处 junction，并检查家级补丁层是否有本插件的行。
-# 何时跑：DSH Desktop 因后端启动失败把 profiles 目录隔离重建之后（junction 会丢），
-#         或手工迁移 dsh-home 之后。
+# 标准分发形态（npm）：dsh plugin --profile web add dsh-plugin-manager-plus
+#   安装后包内 cordis.patch.yml（dsh.bundle.patch）自动挂载通用默认行，
+#   一般无需本脚本。
+#
+# 本脚本用途（本地开发 / profiles 隔离重建后修复）：
+#   ① 重建包解析所需的三处 junction（源码目录 → dsh-home 各 node_modules）；
+#   ② 检查家级补丁层是否有本插件的裸包名行。
+#   何时跑：DSH Desktop 因后端启动失败把 profiles 目录隔离重建之后（junction 会丢），
+#           或手工迁移 dsh-home 之后，或从 git clone 做本地开发接线。
 #
 # 用法：pwsh -File install.ps1              # 用默认 DSH_HOME
 #      pwsh -File install.ps1 -DshHome "C:\path\to\dsh-home"
@@ -14,12 +20,15 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $pkgDir = $PSScriptRoot
-$pkgName = 'dsh-plugin-manager'
+$pkgName = 'dsh-plugin-manager-plus'
 
 if (-not (Test-Path (Join-Path $pkgDir 'package.json'))) { throw "找不到 $pkgDir\package.json —— 请在插件目录内运行本脚本。" }
 if (-not (Test-Path $DshHome)) { throw "DSH_HOME 不存在：$DshHome" }
 Write-Host "包目录 : $pkgDir"
 Write-Host "DSH_HOME: $DshHome`n"
+
+Write-Host "★ 标准安装（推荐）：dsh plugin --profile web add $pkgName"
+Write-Host "  （本地开发接线则继续下面的 junction + 家级补丁行）`n"
 
 # 三处 junction：家级补丁行必需第一处，其余两处为 profile 层兜底。
 $targets = @(
@@ -42,20 +51,17 @@ foreach ($link in $targets) {
 # 家级补丁行检查
 $patch = Join-Path $DshHome 'cordis.patch.yml'
 Write-Host ''
-if ((Test-Path $patch) -and ((Get-Content $patch -Raw) -match [regex]::Escape($pkgName))) {
-	Write-Host "OK   家级补丁层已有 $pkgName 的行：$patch"
+if ((Test-Path $patch) -and ((Get-Content $patch -Raw) -match '(?m)^\s+name:\s*' + [regex]::Escape($pkgName) + '\s*$')) {
+	Write-Host "OK   家级补丁层已有 $pkgName 的裸包名行：$patch"
 } else {
-	Write-Warning "家级补丁层缺少 $pkgName 的行，请在 $patch 末尾追加（注意替换 ?v=N）："
-	# file:// URL：正斜杠 + 空格转义 %20，指向本脚本所在包目录的 lib/index.mjs
-	$mjsUrl = ('file:///' + ($pkgDir -replace '\\', '/') -replace ' ', '%20') + '/lib/index.mjs?v=1'
+	Write-Warning "家级补丁层缺少 $pkgName 的裸包名行，请在 $patch 末尾追加："
 	Write-Host (@"
 - insert:
     - id: plugin-manager
-      name: $mjsUrl
-
-    - id: plugin-manager-client
-      name: dsh-plugin-manager
+      name: $pkgName
 "@)
+	Write-Warning "host 半用裸包名（package.json main → lib/index.mjs）；client 半靠 dsh.client 声明自动进浏览器花名册，无需单独一行。"
+	Write-Warning "改 lib/index.mjs 后重启 DSH 生效（或临时把 name 改成 $pkgName`?v=N 触发热重载）。"
 	Write-Warning "注意：不要写进 profiles/web/cordis.patch.yml —— profiles 目录被隔离重建时会丢。"
 }
 
