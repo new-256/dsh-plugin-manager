@@ -1,7 +1,7 @@
 {
   "name": "dsh-plugin-manager-plus",
   "description": "DeepSeek Harness (DSH) 插件管理器：设置面板内的社区插件市场（npm 搜索一键安装）+ 已安装插件管理（来源/用途/状态三维筛选、启停热重载、一键卸载、持久化）。Plugin manager & marketplace for DeepSeek Harness.",
-  "version": "1.3.1",
+  "version": "1.3.2",
   "type": "module",
   "main": "./lib/index.mjs",
   "exports": {
