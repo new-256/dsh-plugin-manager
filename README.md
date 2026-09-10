@@ -49,6 +49,23 @@ DeepSeek Harness (DSH) Desktop 宿主插件：把「插件市场」与「插件�
   - 本地 `file://` 插件 → 仅删补丁行（源码保留）
   - 官方内置插件受保护，只能停用
 
+### 🩺 开机自检守卫（v1.3.4）
+
+防御两类真实事故，开机自动巡检，发现问题在「插件管理」页顶部弹告警横幅，提供**一键恢复**：
+
+1. **`profiles/web/pnpm-workspace.yaml` 缺失**：桌面壳后端崩溃会隔离重建 profiles，该文件（`nodeLinker: hoisted` / `autoInstallPeers: false`）随之丢失，pnpm 退回默认强制解析 peerDeps，撞上 npm dist-tag 陷阱后**任何插件都装不上**（`ERR_PNPM_NO_MATCHING_VERSION`）。守卫补回标准内容。
+2. **家级补丁插件行丢失**：桌面壳的隔离轮测可能把【已经残缺的补丁】当基线快照保存再恢复，导致激活行阶梯式永久消失。
+
+守卫的关键设计：
+
+- **基线只在健康时保存，检测到丢失绝不降级**——这正是桌面壳自带快照失效的根因。首次健康启动时播种基线，之后只在插件数增长或管理器自身安装/卸载后刷新。
+- **区分事故丢失与正常卸载**：基线里有、当前缺失的行，只有当其加载物料（`file://` 脚本 / 裸包名包目录 / MCP server 脚本）仍在时才告警；物料已删则静默从基线剔除。
+- **骤降判级**：当前健康插件数 ≤ 基线一半时标为「严重」（红），否则「警告」（琥珀色）。
+- **恢复只合并不覆盖**：把缺失块从历史快照（`plugins-store/guard/guard-snapshots/`，轮转留 8 份）或基线追加到补丁末尾，恢复前自动备份 `cordis.patch.yml.bak-guard-<时间戳>`，绝不重复加入仍存在的 id，并跑一次 `dsh --dump-config` 软校验。
+- 守卫状态全部存放在 `$DSH_HOME/plugins-store/guard/`（家级，**不随 profiles 隔离丢失**）。
+- API：`GET /plugin-manager/api/guard/status`、`POST /plugin-manager/api/guard/restore`、`POST /plugin-manager/api/guard/dismiss`。
+- 恢复的是 host 组合，**需正常退出 DSH Desktop 再打开生效，切勿强杀进程**。
+
 ### 🛡 安全
 
 - **Loopback 校验**：仅 127.0.0.1 / ::1 可访问 API
