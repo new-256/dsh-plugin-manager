@@ -6,6 +6,8 @@ DeepSeek Harness (DSH) Desktop 宿主插件：把「插件市场」与「插件�
 
 零 npm 依赖 · 纯 Node 内置模块 + 原生 React · 中文/英文双语界面
 
+> **开发纪律**：本插件当前经 junction（`profiles\node_modules\dsh-plugin-manager-plus` → 本目录）部署，属**开发态接线**——按 [../DEV-DISCIPLINE.md](../DEV-DISCIPLINE.md) 纪律 1/2，发版后应转制品形态，仓库迁移前必须显式处理此接线。
+
 ## 📐 适配版本
 
 | 项 | 值 |
